@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Higaaaaashi - 究極のブログ</title>
+  <style>
+    body{font-family:"Helvetica Neue",sans-serif;background:#121212;color:#f0f0f0;margin:0;padding:0;}
+    header{background:#1f1f1f;padding:20px;text-align:center;border-bottom:1px solid #333;}
+    nav{display:flex;justify-content:center;gap:10px;padding:10px;background:#181818;border-bottom:1px solid #333;flex-wrap:wrap;}
+    nav button{background:#2e2e2e;color:#f0f0f0;border:none;padding:10px;border-radius:4px;cursor:pointer;}
+    nav button:hover{background:#444;}
+    .section{display:none;padding:20px;}
+    .active{display:block;}
+    input, textarea, select{width:100%;padding:10px;margin:10px 0;background:#222;color:#f0f0f0;border:1px solid #444;border-radius:4px;}
+    .article, .userItem, .dmMsg{background:#1e1e1e;padding:15px;border-radius:6px;border:1px solid #333;margin-bottom:10px;}
+    .article img{max-width:100%;border-radius:6px;margin-top:10px;}
+    .reactions button, .followBtn, .dmSendBtn{background:transparent;border:none;cursor:pointer;font-size:1em;margin-right:8px;color:#f0f0f0;}
+    #dmChat{border:1px solid #444;height:300px;overflow-y:auto;padding:10px;margin-bottom:10px;}
+    .dmMsg.me{text-align:right;color:#9f9;}
+    .dmMsg.you{text-align:left;color:#9cf;}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Higaaaaashi</h1>
+    <p>大人が静かに語る場所。写真とことばで、想いを紡ぐ。</p>
+    <div id="user-info"><span id="current-user"></span><button id="logoutBtn" style="display:none;">ログアウト</button></div>
+  </header>
+  <nav>
+    <button onclick="showSection('login')">ログイン</button>
+    <button onclick="showSection('register')">アカウント作成</button>
+    <button onclick="showSection('post')">投稿</button>
+    <button onclick="showSection('articles')">記事一覧</button>
+    <button onclick="showSection('users')">ユーザー一覧</button>
+    <button onclick="showSection('dm')">DM</button>
+  </nav>
+
+  <section id="login" class="section">
+    <h2>ログイン</h2>
+    <input id="loginUser" placeholder="ユーザー名">
+    <input id="loginPass" type="password" placeholder="パスワード">
+    <button onclick="login()">ログイン</button>
+  </section>
+
+  <section id="register" class="section">
+    <h2>アカウント作成</h2>
+    <input id="regUser" placeholder="ユーザー名">
+    <input id="regPass" type="password" placeholder="パスワード">
+    <button onclick="register()">作成</button>
+  </section>
+
+  <section id="post" class="section">
+    <h2>記事を書く</h2>
+    <input id="articleTitle" placeholder="タイトル">
+    <textarea id="articleContent" placeholder="本文"></textarea>
+    <input type="file" id="imageInput" accept="image/*">
+    <button onclick="submitArticle()">投稿する</button>
+  </section>
+
+  <section id="articles" class="section active">
+    <h2>記事一覧</h2>
+    <input id="searchInput" placeholder="🔍 キーワードで検索..." oninput="displayArticles()">
+    <div id="articleList"></div>
+  </section>
+
+  <section id="users" class="section">
+    <h2>ユーザー一覧</h2>
+    <div id="userListContainer"></div>
+  </section>
+
+  <section id="dm" class="section">
+    <h2 id="dmTitle">DM</h2>
+    <select id="dmTarget"></select>
+    <div id="dmChat"></div>
+    <input id="dmInput" placeholder="メッセージを入力">
+    <button class="dmSendBtn" onclick="sendDM()">送信</button>
+  </section>
+
+  <script>
+    window.onload = () => { showSection('articles'); updateUserInfo(); displayArticles(); };
+
+    function showSection(id) {
+      document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      if(id==='users') updateUserList();
+      if(id==='dm') initDM();
+    }
+
+    function register() {
+      const u=regUser.value.trim(),p=regPass.value;
+      if(!u||!p){alert('入力不足');return;}
+      const users=JSON.parse(localStorage.getItem('users')||'{}');
+      if(users[u]){alert('そのユーザー名はすでに使われています');return;}
+      users[u]={pass:p};
+      localStorage.setItem('users',JSON.stringify(users));
+      alert('作成成功！ログインしてください');
+      showSection('login');
+    }
+
+    function login() {
+      const u=loginUser.value.trim(),p=loginPass.value;
+      const users=JSON.parse(localStorage.getItem('users')||'{}');
+      if(users[u]&&users[u].pass===p){
+        localStorage.setItem('loggedInUser',u);
+        alert('ログイン成功！');
+        updateUserInfo();
+        showSection('articles');
+      } else alert('ユーザー名かパスワードが違います');
+    }
+
+    document.getElementById('logoutBtn').onclick=()=>{
+      localStorage.removeItem('loggedInUser');
+      updateUserInfo();
+      showSection('login');
+    };
+
+    function updateUserInfo(){
+      const u=localStorage.getItem('loggedInUser');
+      document.getElementById('current-user').innerText = u?`ようこそ、${u}さん`:'';
+      document.getElementById('logoutBtn').style.display = u?'inline':'none';
+    }
+
+    function submitArticle(){
+      const user=localStorage.getItem('loggedInUser');
+      if(!user){alert('ログインしてください');return;}
+      const t=articleTitle.value.trim(),c=articleContent.value.trim();
+      if(!t||!c){alert('入力不足');return;}
+      const file=imageInput.files[0];
+      const save = img=>{
+        const list=JSON.parse(localStorage.getItem('articles')||'[]');
+        list.unshift({author:user,title:t,content:c,image:img,reactions:{heart:0,like:0,smile:0},comments:[]});
+        localStorage.setItem('articles',JSON.stringify(list));
+        articleTitle.value=articleContent.value='';imageInput.value='';
+        displayArticles();showSection('articles');
+      };
+      if(file){
+        const r=new FileReader();
+        r.onload=()=>save(r.result);
+        r.readAsDataURL(file);
+      } else save('');
+    }
+
+    function displayArticles(){
+      const kw=document.getElementById('searchInput').value.trim().toLowerCase();
+      const list=JSON.parse(localStorage.getItem('articles')||'[]');
+      const cont=document.getElementById('articleList');
+      cont.innerHTML='';
+      list.forEach((a,i)=>{
+        const txt=`${a.title} ${a.content} ${a.author}`.toLowerCase();
+        if(kw&&!txt.includes(kw))return;
+        const isFollowing = getFollowList().includes(a.author);
+        const followBtn = a.author!==localStorage.getItem('loggedInUser')?
+          `<button class="followBtn" onclick="toggleFollow('${a.author}')">${isFollowing?'フォロー解除':'フォロー'}</button>`:'';
+        const div=document.createElement('div');
+        div.className='article';
+        div.innerHTML=`
+          <h3>${a.title}</h3>
+          <p>🖋 by ${a.author} ${followBtn}</p>
+          <p>${a.content}</p>
+          ${a.image?`<img src="${a.image}">`:''}
+          <div class="reactions">
+            <button onclick="addReaction(${i},'heart')">❤️</button><span>${a.reactions.heart}</span>
+            <button onclick="addReaction(${i},'like')">👍</button><span>${a.reactions.like}</span>
+            <button onclick="addReaction(${i},'smile')">😂</button><span>${a.reactions.smile}</span>
+          </div>
+          <div class="comments">
+            <h4>💬 コメント</h4>
+            ${a.comments.map(c=>`<p><strong>${c.user}:</strong> ${c.text}</p>`).join('')}
+            ${localStorage.getItem('loggedInUser')?`<input id="comment-${i}" placeholder="コメントを入力"><button onclick="addComment(${i})">投稿</button>`:`<p>コメントにはログインが必要です</p>`}
+          </div>`;
+        cont.appendChild(div);
+      });
+    }
+
+    function addReaction(i,type){
+      const u=localStorage.getItem('loggedInUser'); if(!u){alert('ログインしてください');return;}
+      const key=`react_${u}_${i}_${type}`; if(localStorage.getItem(key)){alert('リアクション済み');return;}
+      const list=JSON.parse(localStorage.getItem('articles')||'[]');
+      list[i].reactions[type]++; localStorage.setItem('articles',JSON.stringify(list));
+      localStorage.setItem(key,'1');
+      displayArticles();
+    }
+
+    function addComment(i){
+      const u=localStorage.getItem('loggedInUser'); if(!u) return;
+      const text=document.getElementById(`comment-${i}`).value.trim(); if(!text) return;
+      const list=JSON.parse(localStorage.getItem('articles')||'[]');
+      list[i].comments.push({user:u,text}); localStorage.setItem('articles',JSON.stringify(list));
+      displayArticles();
+    }
+
+    function getFollowList(){
+      const u=localStorage.getItem('loggedInUser'); if(!u) return [];
+      return JSON.parse(localStorage.getItem(`follows_${u}`)||'[]');
+    }
+    function toggleFollow(author){
+      const u=localStorage.getItem('loggedInUser'); if(!u){alert('ログインしてください');return;}
+      let arr=getFollowList(); const idx=arr.indexOf(author);
+      if(idx>=0)arr.splice(idx,1);else arr.push(author);
+      localStorage.setItem(`follows_${u}`,JSON.stringify(arr));
+      displayArticles(); if(document.querySelector('.section.active').id==='users') updateUserList();
+    }
+
+    function updateUserList(){
+      const users=JSON.parse(localStorage.getItem('users')||'{}');
+      const cur=localStorage.getItem('loggedInUser');
+      const cont=document.getElementById('userListContainer'); cont.innerHTML='';
+      Object.keys(users).forEach(name=>{
+        if(name===cur)return;
+        const isF=getFollowList().includes(name);
+        const udiv=document.createElement('div'); udiv.className='userItem';
+        udiv.innerHTML=`<p>${name} ${isF?'<small>★フォロー中</small>':''}</p>
+          <button class="followBtn" onclick="toggleFollow('${name}')">${isF?'フォロー解除':'フォロー'}</button>
+          <button class="followBtn" onclick="initDM('${name}')">DMを送る</button>`;
+        cont.appendChild(udiv);
+      });
+    }
+
+    function initDM(prefill){
+      const cur=localStorage.getItem('loggedInUser'); if(!cur){alert('ログインしてください');return;}
+      showSection('dm');
+      const sel=document.getElementById('dmTarget'); sel.innerHTML='';
+      const all=Object.keys(JSON.parse(localStorage.getItem('users')||'{}'));
+      all.forEach(name=>{
+        if((getFollowList().includes(name)||JSON.parse(localStorage.getItem(`follows_${name}`)||'[]').includes(cur))&&name!==cur){
+          sel.innerHTML+=`<option value="${name}">${name}</option>`;
+        }
+      });
+      if(prefill)sel.value=prefill;
+      loadDM();
+    }
+
+    function sendDM(){
+      const from=localStorage.getItem('loggedInUser'),to=document.getElementById('dmTarget').value;
+      if(!from||!to){alert('相手を選んでください');return;}
+      const text=document.getElementById('dmInput').value.trim(); if(!text)return;
+      const key=`dm_${from}_${to}`, arr=JSON.parse(localStorage.getItem(key)||'[]');
+      arr.push({from,text,time:Date.now()}); localStorage.setItem(key,JSON.stringify(arr));
+      document.getElementById('dmInput').value='';
+      loadDM();
+    }
+
+    function loadDM(){
+      const from=localStorage.getItem('loggedInUser'),to=document.getElementById('dmTarget').value;
+      const key=`dm_${from}_${to}`, arr=JSON.parse(localStorage.getItem(key)||'[]');
+      const box=document.getElementById('dmChat'); box.innerHTML='';
+      arr.forEach(m=>{
+        const div=document.createElement('div');
+        div.className='dmMsg '+(m.from===from?'me':'you');
+        div.innerText=`${m.from}: ${m.text}`;
+        box.appendChild(div);
+      });
+      box.scrollTop = box.scrollHeight;
+    }
+  </script>
+</body>
+</html>
